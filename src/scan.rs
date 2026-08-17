@@ -687,13 +687,25 @@ pub fn scan_game_for_backup(
         }
     }
 
-    let previous_files: HashMap<&StrictPath, &String> = previous
+    #[derive(Clone, Copy)]
+    struct PreviousFile<'a> {
+        hash: &'a String,
+        size: u64,
+        last_modified: Option<i64>,
+    }
+
+    let previous_files: HashMap<&StrictPath, PreviousFile> = previous
         .as_ref()
         .map(|previous| {
             let mut files = HashMap::new();
             for (scan_key, file) in &previous.scan.found_files {
-                files.insert(file.original_path(scan_key), &file.hash);
-                files.insert(file.effective(scan_key), &file.hash);
+                let record = PreviousFile {
+                    hash: &file.hash,
+                    size: file.size,
+                    last_modified: file.last_modified,
+                };
+                files.insert(file.original_path(scan_key), record);
+                files.insert(file.effective(scan_key), record);
             }
             files
         })
@@ -732,7 +744,7 @@ pub fn scan_game_for_backup(
                 let ignored = ignored_paths.is_ignored(name, &scan_key);
                 log::debug!("[{name}] found: {scan_key:?}");
                 let size = scan_key.size();
-                let hash = scan_key.sha1();
+                let last_modified = scan_key.mtime_unix();
                 let redirected = game_file_target(
                     &scan_key,
                     redirects,
@@ -741,14 +753,21 @@ pub fn scan_game_for_backup(
                     None,
                     None,
                 );
-                let change =
-                    ScanChange::evaluate_backup(&hash, previous_files.get(redirected.as_ref().unwrap_or(&scan_key)));
+                let previous_record = previous_files.get(redirected.as_ref().unwrap_or(&scan_key)).copied();
+                let hash = match previous_record {
+                    Some(pf) if pf.size == size && last_modified.is_some() && pf.last_modified == last_modified => {
+                        pf.hash.clone()
+                    }
+                    _ => scan_key.sha1(),
+                };
+                let change = ScanChange::evaluate_backup(&hash, previous_record.map(|pf| pf.hash).as_ref());
                 found_files.insert(
                     scan_key,
                     ScannedFile {
                         change,
                         size,
                         hash,
+                        last_modified,
                         redirected,
                         original_path: None,
                         ignored,
@@ -781,7 +800,7 @@ pub fn scan_game_for_backup(
                         let ignored = ignored_paths.is_ignored(name, &scan_key);
                         log::debug!("[{name}] found: {scan_key:?}");
                         let size = scan_key.size();
-                        let hash = scan_key.sha1();
+                        let last_modified = scan_key.mtime_unix();
                         let redirected = game_file_target(
                             &scan_key,
                             redirects,
@@ -790,16 +809,23 @@ pub fn scan_game_for_backup(
                             None,
                             None,
                         );
-                        let change = ScanChange::evaluate_backup(
-                            &hash,
-                            previous_files.get(redirected.as_ref().unwrap_or(&scan_key)),
-                        );
+                        let previous_record = previous_files.get(redirected.as_ref().unwrap_or(&scan_key)).copied();
+                        let hash = match previous_record {
+                            Some(pf)
+                                if pf.size == size && last_modified.is_some() && pf.last_modified == last_modified =>
+                            {
+                                pf.hash.clone()
+                            }
+                            _ => scan_key.sha1(),
+                        };
+                        let change = ScanChange::evaluate_backup(&hash, previous_record.map(|pf| pf.hash).as_ref());
                         found_files.insert(
                             scan_key,
                             ScannedFile {
                                 change,
                                 size,
                                 hash,
+                                last_modified,
                                 redirected,
                                 original_path: None,
                                 ignored,
@@ -840,6 +866,7 @@ pub fn scan_game_for_backup(
                     original_path: None,
                     ignored: ignored_paths.is_ignored(name, previous_file),
                     container: None,
+                    last_modified: None,
                 },
             );
         }
@@ -1101,6 +1128,48 @@ mod tests {
     };
 
     const ONLY_CONSTRUCTIVE: bool = false;
+
+    /// Shadows `super::scan_game_for_backup` for these tests: real file mtimes on disk
+    /// aren't stable/predictable across checkouts, so we strip them from the result
+    /// rather than hardcoding them into every expected fixture.
+    #[allow(clippy::too_many_arguments)]
+    fn scan_game_for_backup(
+        game: &Game,
+        name: &str,
+        roots: &[Root],
+        manifest_dir: &StrictPath,
+        launchers: &Launchers,
+        filter: &BackupFilter,
+        wine_prefix: Option<&StrictPath>,
+        ignored_paths: &ToggledPaths,
+        ignored_registry: &ToggledRegistry,
+        previous: Option<&LatestBackup>,
+        redirects: &[RedirectConfig],
+        reverse_redirects_on_restore: bool,
+        steam_shortcuts: &SteamShortcuts,
+        only_constructive_backups: bool,
+    ) -> ScanInfo {
+        let mut scan = super::scan_game_for_backup(
+            game,
+            name,
+            roots,
+            manifest_dir,
+            launchers,
+            filter,
+            wine_prefix,
+            ignored_paths,
+            ignored_registry,
+            previous,
+            redirects,
+            reverse_redirects_on_restore,
+            steam_shortcuts,
+            only_constructive_backups,
+        );
+        for file in scan.found_files.values_mut() {
+            file.last_modified = None;
+        }
+        scan
+    }
 
     fn wine_semantics(prefix: &str) -> BackupSemantics {
         BackupSemantics {
@@ -1394,6 +1463,7 @@ mod tests {
                         change: ScanChange::New,
                         container: None,
                         redirected: Some(StrictPath::new(format!("{}/tests/root3/game5/data-symlink/file1.txt", repo()))),
+                        last_modified: None,
                     },
                 },
                 found_registry_keys: hash_map! {},
@@ -1754,16 +1824,16 @@ mod tests {
         let previous = LatestBackup {
             scan: ScanInfo {
                 found_files: hash_map! {
-                    StrictPath::new("/backup/game4/file.dat"): ScannedFile {
-                        size: 0,
-                        hash: EMPTY_HASH.to_string(),
-                        original_path: Some(previous_source.clone()),
-                        ignored: false,
-                        change: ScanChange::Unknown,
-                        container: None,
-                        redirected: Some(current_path.clone()),
-                    },
+                                    StrictPath::new("/backup/game4/file.dat"): ScannedFile {
+                                        size: 0,
+                                        hash: EMPTY_HASH.to_string(),
+                                        original_path: Some(previous_source.clone()),
+                                        ignored: false,
+                                        change: ScanChange::Unknown,
+                                        container: None,
+                                        redirected: Some(current_path.clone()), last_modified: None,
                 },
+                                },
                 ..Default::default()
             },
             when: chrono::Utc::now(),
@@ -1801,16 +1871,16 @@ mod tests {
         let previous = LatestBackup {
             scan: ScanInfo {
                 found_files: hash_map! {
-                    StrictPath::new("/backup/game1/file1.txt"): ScannedFile {
-                        size: 1,
-                        hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".to_string(),
-                        original_path: Some(stored_path.clone()),
-                        ignored: false,
-                        change: ScanChange::Unknown,
-                        container: None,
-                        redirected: None,
-                    },
+                                    StrictPath::new("/backup/game1/file1.txt"): ScannedFile {
+                                        size: 1,
+                                        hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".to_string(),
+                                        original_path: Some(stored_path.clone()),
+                                        ignored: false,
+                                        change: ScanChange::Unknown,
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                },
                 ..Default::default()
             },
             when: chrono::Utc::now(),

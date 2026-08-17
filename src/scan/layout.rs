@@ -359,6 +359,9 @@ impl DifferentialBackup {
 pub struct IndividualMappingFile {
     pub hash: String,
     pub size: u64,
+    /// Unix timestamp (seconds) of the file's last modification time, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<i64>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -789,6 +792,7 @@ impl GameLayout {
                             },
                             size: v.size,
                             hash: v.hash.clone(),
+                            last_modified: v.last_modified,
                             ignored: toggled_paths.is_ignored(&self.mapping.name, ignorable_path),
                             redirected,
                             original_path: Some(original_path),
@@ -810,6 +814,7 @@ impl GameLayout {
                             },
                             size: v.size,
                             hash: v.hash.clone(),
+                            last_modified: v.last_modified,
                             ignored: toggled_paths.is_ignored(&self.mapping.name, ignorable_path),
                             redirected,
                             original_path: Some(original_path),
@@ -864,6 +869,7 @@ impl GameLayout {
                             },
                             size: v.size,
                             hash: v.hash.clone(),
+                            last_modified: v.last_modified,
                             ignored: toggled_paths.is_ignored(&self.mapping.name, ignorable_path),
                             redirected,
                             original_path: Some(original_path),
@@ -885,6 +891,7 @@ impl GameLayout {
                             },
                             size: v.size,
                             hash: v.hash.clone(),
+                            last_modified: v.last_modified,
                             ignored: toggled_paths.is_ignored(&self.mapping.name, ignorable_path),
                             redirected,
                             original_path: Some(original_path),
@@ -928,12 +935,14 @@ impl GameLayout {
                 let scan_key = StrictPath::new(raw_file);
                 let size = scan_key.size();
                 let hash = scan_key.sha1();
+                let last_modified = scan_key.mtime_unix();
                 files.insert(
                     scan_key,
                     ScannedFile {
                         change: crate::scan::ScanChange::Unknown,
                         size,
                         hash,
+                        last_modified,
                         original_path,
                         ignored: false,
                         container: None,
@@ -1095,6 +1104,7 @@ impl GameLayout {
                         IndividualMappingFile {
                             hash: file.hash.clone(),
                             size: file.size,
+                            last_modified: file.last_modified,
                         },
                     );
                 }
@@ -1142,6 +1152,7 @@ impl GameLayout {
                         (!file.ignored).then(|| IndividualMappingFile {
                             hash: file.hash.clone(),
                             size: file.size,
+                            last_modified: file.last_modified,
                         }),
                     );
                 }
@@ -1512,6 +1523,7 @@ impl GameLayout {
                 IndividualMappingFile {
                     hash: scan_key.sha1(),
                     size: scan_key.size(),
+                    last_modified: file.last_modified,
                 },
             );
         }
@@ -2703,10 +2715,13 @@ mod tests {
                     when: now(),
                     os: Some(Os::HOST),
                     files: btree_map! {
-                        StrictPath::new(repo_file("new")).render(): IndividualMappingFile { hash: "n".into(), size: 1 },
-                        StrictPath::new(repo_file("different")).render(): IndividualMappingFile { hash: "d".into(), size: 2 },
-                        StrictPath::new(repo_file("same")).render(): IndividualMappingFile { hash: "s".into(), size: 5 },
+                                            StrictPath::new(repo_file("new")).render(): IndividualMappingFile { hash: "n".into(), size: 1, last_modified: None,
                     },
+                                            StrictPath::new(repo_file("different")).render(): IndividualMappingFile { hash: "d".into(), size: 2, last_modified: None,
+                    },
+                                            StrictPath::new(repo_file("same")).render(): IndividualMappingFile { hash: "s".into(), size: 5, last_modified: None,
+                    },
+                                        },
                     ..Default::default()
                 },
                 layout.plan_full_backup(&scan, &now(), &BackupFormats::default(), Retention::default()),
@@ -2780,10 +2795,13 @@ mod tests {
                         name: SOLO.to_string(),
                         when: past(),
                         files: btree_map! {
-                            StrictPath::new(repo_file("different")).render(): IndividualMappingFile { hash: "d".into(), size: 2 },
-                            StrictPath::new(repo_file("removed")).render(): IndividualMappingFile { hash: "r".into(), size: 3 },
-                            StrictPath::new(repo_file("same")).render(): IndividualMappingFile { hash: "s".into(), size: 5 },
+                                                    StrictPath::new(repo_file("different")).render(): IndividualMappingFile { hash: "d".into(), size: 2, last_modified: None,
                         },
+                                                    StrictPath::new(repo_file("removed")).render(): IndividualMappingFile { hash: "r".into(), size: 3, last_modified: None,
+                        },
+                                                    StrictPath::new(repo_file("same")).render(): IndividualMappingFile { hash: "s".into(), size: 5, last_modified: None,
+                        },
+                                                },
                         ..Default::default()
                     }]),
                     ..Default::default()
@@ -2796,10 +2814,12 @@ mod tests {
                     when: now(),
                     os: Some(Os::HOST),
                     files: btree_map! {
-                        StrictPath::new(repo_file("new")).render(): Some(IndividualMappingFile { hash: "n".into(), size: 1 }),
-                        StrictPath::new(repo_file("different")).render(): Some(IndividualMappingFile { hash: "d+".into(), size: 2 }),
-                        StrictPath::new(repo_file("removed")).render(): None,
-                    },
+                                            StrictPath::new(repo_file("new")).render(): Some(IndividualMappingFile { hash: "n".into(), size: 1, last_modified: None,
+                    }),
+                                            StrictPath::new(repo_file("different")).render(): Some(IndividualMappingFile { hash: "d+".into(), size: 2, last_modified: None,
+                    }),
+                                            StrictPath::new(repo_file("removed")).render(): None,
+                                        },
                     registry: None,
                     ..Default::default()
                 },
@@ -2827,10 +2847,13 @@ mod tests {
                         name: SOLO.to_string(),
                         when: past(),
                         files: btree_map! {
-                            StrictPath::new(repo_file("file1")).render(): IndividualMappingFile { hash: "1".into(), size: 1 },
-                            StrictPath::new(repo_file("file2")).render(): IndividualMappingFile { hash: "2".into(), size: 2 },
-                            StrictPath::new(repo_file("file3")).render(): IndividualMappingFile { hash: "3".into(), size: 3 },
+                                                    StrictPath::new(repo_file("file1")).render(): IndividualMappingFile { hash: "1".into(), size: 1, last_modified: None,
                         },
+                                                    StrictPath::new(repo_file("file2")).render(): IndividualMappingFile { hash: "2".into(), size: 2, last_modified: None,
+                        },
+                                                    StrictPath::new(repo_file("file3")).render(): IndividualMappingFile { hash: "3".into(), size: 3, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from([DifferentialBackup {
                             name: format!("backup-{}-diff", now_str()),
                             when: now(),
@@ -3231,36 +3254,36 @@ mod tests {
                         name: "backup-1".into(),
                         when: past(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "old".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "old".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "old".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "old".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         ..Default::default()
                     }]),
                 },
             };
             assert_eq!(
                 hash_map! {
-                    make_restorable_path("backup-1", "file1.txt"): ScannedFile {
-                        size: 1,
-                        hash: "old".into(),
-                        original_path: Some(make_original_path("/file1.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-
-                    },
-                    make_restorable_path("backup-1", "file2.txt"): ScannedFile {
-                        size: 2,
-                        hash: "old".into(),
-                        original_path: Some(make_original_path("/file2.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-
-                    },
+                                    make_restorable_path("backup-1", "file1.txt"): ScannedFile {
+                                        size: 1,
+                                        hash: "old".into(),
+                                        original_path: Some(make_original_path("/file1.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                    make_restorable_path("backup-1", "file2.txt"): ScannedFile {
+                                        size: 2,
+                                        hash: "old".into(),
+                                        original_path: Some(make_original_path("/file2.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 layout.restorable_files(
                     &BackupId::Latest,
                     ScanKind::Backup,
@@ -3283,36 +3306,36 @@ mod tests {
                         name: "backup-1.zip".into(),
                         when: past(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "old".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "old".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "old".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "old".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         ..Default::default()
                     }]),
                 },
             };
             assert_eq!(
                 hash_map! {
-                    make_restorable_path_zip("file1.txt"): ScannedFile {
-                        size: 1,
-                        hash: "old".into(),
-                        original_path: Some(make_original_path("/file1.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: Some(make_path("backup-1.zip")),
-                        redirected: None,
-
-                    },
-                    make_restorable_path_zip("file2.txt"): ScannedFile {
-                        size: 2,
-                        hash: "old".into(),
-                        original_path: Some(make_original_path("/file2.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: Some(make_path("backup-1.zip")),
-                        redirected: None,
-
-                    },
+                                    make_restorable_path_zip("file1.txt"): ScannedFile {
+                                        size: 1,
+                                        hash: "old".into(),
+                                        original_path: Some(make_original_path("/file1.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: Some(make_path("backup-1.zip")),
+                                        redirected: None, last_modified: None,
                 },
+                                    make_restorable_path_zip("file2.txt"): ScannedFile {
+                                        size: 2,
+                                        hash: "old".into(),
+                                        original_path: Some(make_original_path("/file2.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: Some(make_path("backup-1.zip")),
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 layout.restorable_files(
                     &BackupId::Latest,
                     ScanKind::Backup,
@@ -3335,18 +3358,23 @@ mod tests {
                         name: "backup-1".into(),
                         when: past(),
                         files: btree_map! {
-                            mapping_file_key("/unchanged.txt"): IndividualMappingFile { hash: "old".into(), size: 1 },
-                            mapping_file_key("/changed.txt"): IndividualMappingFile { hash: "old".into(), size: 2 },
-                            mapping_file_key("/delete.txt"): IndividualMappingFile { hash: "old".into(), size: 3 },
+                                                    mapping_file_key("/unchanged.txt"): IndividualMappingFile { hash: "old".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/changed.txt"): IndividualMappingFile { hash: "old".into(), size: 2, last_modified: None,
+                        },
+                                                    mapping_file_key("/delete.txt"): IndividualMappingFile { hash: "old".into(), size: 3, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from([DifferentialBackup {
                             name: "backup-2".into(),
                             when: past2(),
                             files: btree_map! {
-                                mapping_file_key("/changed.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 2 }),
-                                mapping_file_key("/delete.txt"): None,
-                                mapping_file_key("/added.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 5 }),
-                            },
+                                                            mapping_file_key("/changed.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 2, last_modified: None,
+                            }),
+                                                            mapping_file_key("/delete.txt"): None,
+                                                            mapping_file_key("/added.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 5, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         ..Default::default()
@@ -3355,37 +3383,34 @@ mod tests {
             };
             assert_eq!(
                 hash_map! {
-                    make_restorable_path("backup-1", "unchanged.txt"): ScannedFile {
-                        size: 1,
-                        hash: "old".into(),
-                        original_path: Some(make_original_path("/unchanged.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-
-                    },
-                    make_restorable_path("backup-2", "changed.txt"): ScannedFile {
-                        size: 2,
-                        hash: "new".into(),
-                        original_path: Some(make_original_path("/changed.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-
-                    },
-                    make_restorable_path("backup-2", "added.txt"): ScannedFile {
-                        size: 5,
-                        hash: "new".into(),
-                        original_path: Some(make_original_path("/added.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-
-                    },
+                                    make_restorable_path("backup-1", "unchanged.txt"): ScannedFile {
+                                        size: 1,
+                                        hash: "old".into(),
+                                        original_path: Some(make_original_path("/unchanged.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                    make_restorable_path("backup-2", "changed.txt"): ScannedFile {
+                                        size: 2,
+                                        hash: "new".into(),
+                                        original_path: Some(make_original_path("/changed.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
+                },
+                                    make_restorable_path("backup-2", "added.txt"): ScannedFile {
+                                        size: 5,
+                                        hash: "new".into(),
+                                        original_path: Some(make_original_path("/added.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 layout.restorable_files(
                     &BackupId::Latest,
                     ScanKind::Backup,
@@ -3417,17 +3442,21 @@ mod tests {
                         name: "backup-1".into(),
                         when: past(),
                         files: btree_map! {
-                            unchanged_source.clone(): IndividualMappingFile { hash: "old".into(), size: 1 },
-                            changed_source.clone(): IndividualMappingFile { hash: "old".into(), size: 2 },
+                                                    unchanged_source.clone(): IndividualMappingFile { hash: "old".into(), size: 1, last_modified: None,
                         },
+                                                    changed_source.clone(): IndividualMappingFile { hash: "old".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from([DifferentialBackup {
                             name: "backup-2".into(),
                             when: past2(),
                             semantics: wine_semantics(diff_source_prefix),
                             files: btree_map! {
-                                changed_source.clone(): Some(IndividualMappingFile { hash: "new".into(), size: 2 }),
-                                added_source.clone(): Some(IndividualMappingFile { hash: "new".into(), size: 5 }),
-                            },
+                                                            changed_source.clone(): Some(IndividualMappingFile { hash: "new".into(), size: 2, last_modified: None,
+                            }),
+                                                            added_source.clone(): Some(IndividualMappingFile { hash: "new".into(), size: 5, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         semantics: wine_semantics(source_prefix),
@@ -3478,18 +3507,23 @@ mod tests {
                         name: "backup-1.zip".into(),
                         when: past(),
                         files: btree_map! {
-                            mapping_file_key("/unchanged.txt"): IndividualMappingFile { hash: "old".into(), size: 1 },
-                            mapping_file_key("/changed.txt"): IndividualMappingFile { hash: "old".into(), size: 2 },
-                            mapping_file_key("/delete.txt"): IndividualMappingFile { hash: "old".into(), size: 3 },
+                                                    mapping_file_key("/unchanged.txt"): IndividualMappingFile { hash: "old".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/changed.txt"): IndividualMappingFile { hash: "old".into(), size: 2, last_modified: None,
+                        },
+                                                    mapping_file_key("/delete.txt"): IndividualMappingFile { hash: "old".into(), size: 3, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from([DifferentialBackup {
                             name: "backup-2.zip".into(),
                             when: past2(),
                             files: btree_map! {
-                                mapping_file_key("/changed.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 2 }),
-                                mapping_file_key("/delete.txt"): None,
-                                mapping_file_key("/added.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 5 }),
-                            },
+                                                            mapping_file_key("/changed.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 2, last_modified: None,
+                            }),
+                                                            mapping_file_key("/delete.txt"): None,
+                                                            mapping_file_key("/added.txt"): Some(IndividualMappingFile { hash: "new".into(), size: 5, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         ..Default::default()
@@ -3498,37 +3532,34 @@ mod tests {
             };
             assert_eq!(
                 hash_map! {
-                    make_restorable_path_zip("unchanged.txt"): ScannedFile {
-                        size: 1,
-                        hash: "old".into(),
-                        original_path: Some(make_original_path("/unchanged.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: Some(make_path("backup-1.zip")),
-                        redirected: None,
-
-                    },
-                    make_restorable_path_zip("changed.txt"): ScannedFile {
-                        size: 2,
-                        hash: "new".into(),
-                        original_path: Some(make_original_path("/changed.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: Some(make_path("backup-2.zip")),
-                        redirected: None,
-
-                    },
-                    make_restorable_path_zip("added.txt"): ScannedFile {
-                        size: 5,
-                        hash: "new".into(),
-                        original_path: Some(make_original_path("/added.txt")),
-                        ignored: false,
-                        change: Default::default(),
-                        container: Some(make_path("backup-2.zip")),
-                        redirected: None,
-
-                    },
+                                    make_restorable_path_zip("unchanged.txt"): ScannedFile {
+                                        size: 1,
+                                        hash: "old".into(),
+                                        original_path: Some(make_original_path("/unchanged.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: Some(make_path("backup-1.zip")),
+                                        redirected: None, last_modified: None,
                 },
+                                    make_restorable_path_zip("changed.txt"): ScannedFile {
+                                        size: 2,
+                                        hash: "new".into(),
+                                        original_path: Some(make_original_path("/changed.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: Some(make_path("backup-2.zip")),
+                                        redirected: None, last_modified: None,
+                },
+                                    make_restorable_path_zip("added.txt"): ScannedFile {
+                                        size: 5,
+                                        hash: "new".into(),
+                                        original_path: Some(make_original_path("/added.txt")),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: Some(make_path("backup-2.zip")),
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 layout.restorable_files(
                     &BackupId::Latest,
                     ScanKind::Backup,
@@ -3567,6 +3598,16 @@ mod tests {
             )
         }
 
+        /// Real file mtimes on disk aren't stable/predictable across checkouts,
+        /// so tests strip them before comparing against hardcoded fixtures.
+        fn strip_mtimes(mapping: &mut IndividualMapping) {
+            for backup in &mut mapping.backups {
+                for file in backup.files.values_mut() {
+                    file.last_modified = None;
+                }
+            }
+        }
+
         #[test]
         fn can_scan_game_for_restoration_with_files() {
             let mut layout = GameLayout::new(
@@ -3578,9 +3619,11 @@ mod tests {
                         name: SOLO.into(),
                         when: now(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         ..Default::default()
                     }]),
                 },
@@ -3589,15 +3632,15 @@ mod tests {
                 name: SOLO.to_string(),
                 when: now(),
                 files: btree_map! {
-                    mapping_file_key("/file1.txt"): IndividualMappingFile {
-                        hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(),
-                        size: 1,
-                    },
-                    mapping_file_key("/file2.txt"): IndividualMappingFile {
-                        hash: "9d891e731f75deae56884d79e9816736b7488080".into(),
-                        size: 2,
-                    },
+                                    mapping_file_key("/file1.txt"): IndividualMappingFile {
+                                        hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(),
+                                        size: 1, last_modified: None,
                 },
+                                    mapping_file_key("/file2.txt"): IndividualMappingFile {
+                                        hash: "9d891e731f75deae56884d79e9816736b7488080".into(),
+                                        size: 2, last_modified: None,
+                },
+                                },
                 ..Default::default()
             })];
 
@@ -3605,27 +3648,25 @@ mod tests {
                 ScanInfo {
                     game_name: s("game1"),
                     found_files: hash_map! {
-                        restorable_file_simple(SOLO, "file1.txt"): ScannedFile {
-                            size: 1,
-                            hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(),
-                            original_path: Some(make_original_path("/file1.txt")),
-                            ignored: false,
-                            change: ScanChange::New,
-                            container: None,
-                            redirected: None,
-
+                                            restorable_file_simple(SOLO, "file1.txt"): ScannedFile {
+                                                size: 1,
+                                                hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(),
+                                                original_path: Some(make_original_path("/file1.txt")),
+                                                ignored: false,
+                                                change: ScanChange::New,
+                                                container: None,
+                                                redirected: None, last_modified: None,
                     },
-                        restorable_file_simple(SOLO, "file2.txt"): ScannedFile {
-                            size: 2,
-                            hash: "9d891e731f75deae56884d79e9816736b7488080".into(),
-                            original_path: Some(make_original_path("/file2.txt")),
-                            ignored: false,
-                            change: ScanChange::New,
-                            container: None,
-                            redirected: None,
-
+                                            restorable_file_simple(SOLO, "file2.txt"): ScannedFile {
+                                                size: 2,
+                                                hash: "9d891e731f75deae56884d79e9816736b7488080".into(),
+                                                original_path: Some(make_original_path("/file2.txt")),
+                                                ignored: false,
+                                                change: ScanChange::New,
+                                                container: None,
+                                                redirected: None, last_modified: None,
                     },
-                    },
+                                        },
                     found_registry_keys: Default::default(),
                     available_backups: backups.clone(),
                     backup: Some(backups[0].clone()),
@@ -3757,9 +3798,11 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: SOLO.into(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         ..Default::default()
                     }]),
                     ..Default::default()
@@ -3777,8 +3820,9 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: SOLO.into(),
                         files: btree_map! {
-                            mapping_file_key("/fake.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/fake.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
                         },
+                                                },
                         ..Default::default()
                     }]),
                     ..Default::default()
@@ -3796,15 +3840,18 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: SOLO.into(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from(vec![DifferentialBackup {
                             name: SOLO.into(),
                             files: btree_map! {
-                                mapping_file_key("/file1.txt"): None,
-                                mapping_file_key("/file2.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 }),
-                            },
+                                                            mapping_file_key("/file1.txt"): None,
+                                                            mapping_file_key("/file2.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         ..Default::default()
@@ -3824,14 +3871,17 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: SOLO.into(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from(vec![DifferentialBackup {
                             name: SOLO.into(),
                             files: btree_map! {
-                                mapping_file_key("/fake.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 }),
-                            },
+                                                            mapping_file_key("/fake.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         ..Default::default()
@@ -3851,9 +3901,11 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: "test.zip".into(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         ..Default::default()
                     }]),
                     ..Default::default()
@@ -3871,8 +3923,9 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: "test.zip".into(),
                         files: btree_map! {
-                            mapping_file_key("/fake.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/fake.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
                         },
+                                                },
                         ..Default::default()
                     }]),
                     ..Default::default()
@@ -3890,15 +3943,18 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: "test.zip".into(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from(vec![DifferentialBackup {
                             name: "test.zip".into(),
                             files: btree_map! {
-                                mapping_file_key("/file1.txt"): None,
-                                mapping_file_key("/file2.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 }),
-                            },
+                                                            mapping_file_key("/file1.txt"): None,
+                                                            mapping_file_key("/file2.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         ..Default::default()
@@ -3918,14 +3974,17 @@ mod tests {
                     backups: VecDeque::from(vec![FullBackup {
                         name: "test.zip".into(),
                         files: btree_map! {
-                            mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
-                            mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 },
+                                                    mapping_file_key("/file1.txt"): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                    mapping_file_key("/file2.txt"): IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                        },
+                                                },
                         children: VecDeque::from(vec![DifferentialBackup {
                             name: "test.zip".into(),
                             files: btree_map! {
-                                mapping_file_key("/fake.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2 }),
-                            },
+                                                            mapping_file_key("/fake.txt"): Some(IndividualMappingFile { hash: "9d891e731f75deae56884d79e9816736b7488080".into(), size: 2, last_modified: None,
+                            }),
+                                                        },
                             ..Default::default()
                         }]),
                         ..Default::default()
@@ -3952,8 +4011,9 @@ mod tests {
                 backups: VecDeque::from(vec![FullBackup {
                     name: SOLO.into(),
                     files: btree_map! {
-                        "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
+                                            "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                     },
+                                        },
                     ..Default::default()
                 }]),
             };
@@ -3962,10 +4022,12 @@ mod tests {
             assert_eq!(before, game_layout.mapping);
 
             game_layout.migrate_legacy_backup(false);
+            strip_mtimes(&mut game_layout.mapping);
             assert_eq!(after, game_layout.mapping);
 
             // Idempotent:
             game_layout.migrate_legacy_backup(false);
+            strip_mtimes(&mut game_layout.mapping);
             assert_eq!(after, game_layout.mapping);
 
             // No-op with default data:
@@ -3993,8 +4055,9 @@ mod tests {
                         .to_utc(),
                         os: Some(Os::Windows),
                         files: btree_map! {
-                            "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
+                                                    "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                         },
+                                                },
                         ..Default::default()
                     },
                 ]),
@@ -4009,8 +4072,9 @@ mod tests {
                         .to_utc(),
                     os: Some(Os::Windows),
                     files: btree_map! {
-                        "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
+                                            "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                     },
+                                        },
                     ..Default::default()
                 }]),
             };
@@ -4050,8 +4114,9 @@ mod tests {
                         .to_utc(),
                         os: Some(Os::Windows),
                         files: btree_map! {
-                            "X:/file1.txt".into(): Some(IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 }),
-                        },
+                                                    "X:/file1.txt".into(): Some(IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
+                        }),
+                                                },
                         ..Default::default()
                     }]),
                     ..Default::default()
@@ -4067,8 +4132,9 @@ mod tests {
                         .to_utc(),
                     os: Some(Os::Windows),
                     files: btree_map! {
-                        "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1 },
+                                            "X:/file1.txt".into(): IndividualMappingFile { hash: "3a52ce780950d4d969792a2559cd519d7ee8c727".into(), size: 1, last_modified: None,
                     },
+                                        },
                     ..Default::default()
                 }]),
             };

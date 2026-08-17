@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iced::{Alignment, Length, Subscription, Task, keyboard, widget::scrollable};
+use iced::{Alignment, Length, Subscription, Task, keyboard, widget::scrollable, window};
 
 use crate::{
     cloud::{Rclone, Remote, rclone_monitor},
@@ -20,6 +20,7 @@ use crate::{
         style,
         widget::{
             Column, Container, Element, IcedParentExt, Progress, Row, Stack, id, operation::container_scroll_offset,
+            text,
         },
     },
     lang::TRANSLATOR,
@@ -116,6 +117,9 @@ pub struct App {
     pending_save: HashMap<SaveKind, Instant>,
     modifiers: keyboard::Modifiers,
     jump_to_game_after_scan: Option<String>,
+    main_window: Option<window::Id>,
+    toast_window: Option<window::Id>,
+    toast_content: Option<String>,
 }
 
 impl App {
@@ -133,6 +137,8 @@ impl App {
         self.operation_should_cancel
             .swap(false, std::sync::atomic::Ordering::Relaxed);
         self.notify_on_single_game_scanned = None;
+        #[cfg(windows)]
+        crate::tray::set_tooltip("Ludusavi");
     }
 
     fn show_modal(&mut self, modal: Modal) -> Task<Message> {
@@ -346,6 +352,13 @@ impl App {
                         Task::none()
                     },
                     self.refresh_scroll_position_on_log(cleared_log),
+                    if !preview {
+                        self.update(Message::ShowToast {
+                            message: "Backing up saves…".to_string(),
+                        })
+                    } else {
+                        Task::none()
+                    },
                     self.handle_backup(BackupPhase::CloudCheck),
                 ])
             }
@@ -691,13 +704,31 @@ impl App {
                     self.operation.push_error(Error::SomeEntriesFailed);
                 }
 
+                let toast_task = if preview {
+                    Task::none()
+                } else {
+                    let changed = self
+                        .backup_screen
+                        .log
+                        .entries
+                        .iter()
+                        .filter(|entry| entry.scan_info.overall_change().is_changed())
+                        .count();
+                    let message = match changed {
+                        0 => "No changes to back up".to_string(),
+                        1 => "Backed up 1 game".to_string(),
+                        n => format!("Backed up {n} games"),
+                    };
+                    self.update(Message::ShowToast { message })
+                };
+
                 let errors = self.operation.errors().cloned();
                 self.go_idle();
 
                 if let Some(errors) = errors
                     && !errors.is_empty()
                 {
-                    return self.show_modal(Modal::Errors { errors });
+                    return Task::batch([toast_task, self.show_modal(Modal::Errors { errors })]);
                 }
 
                 if let Some(jump) = self.jump_to_game_after_scan.take()
@@ -712,18 +743,20 @@ impl App {
                         SCAN_KIND,
                     );
 
-                    return self
-                        .switch_screen(Screen::Backup)
-                        .chain(container_scroll_offset(jump.into()).map(move |offset| match offset {
-                            Some(position) => Message::Scroll {
-                                subject: ScrollSubject::Backup,
-                                position,
-                            },
-                            None => Message::Ignore,
-                        }));
+                    return Task::batch([
+                        toast_task,
+                        self.switch_screen(Screen::Backup)
+                            .chain(container_scroll_offset(jump.into()).map(move |offset| match offset {
+                                Some(position) => Message::Scroll {
+                                    subject: ScrollSubject::Backup,
+                                    position,
+                                },
+                                None => Message::Ignore,
+                            })),
+                    ]);
                 }
 
-                Task::none()
+                toast_task
             }
         }
     }
@@ -771,6 +804,13 @@ impl App {
                 Task::batch([
                     self.close_modal(),
                     self.refresh_scroll_position_on_log(cleared_log),
+                    if !preview {
+                        self.update(Message::ShowToast {
+                            message: "Restoring saves…".to_string(),
+                        })
+                    } else {
+                        Task::none()
+                    },
                     self.handle_restore(RestorePhase::CloudCheck),
                 ])
             }
@@ -994,6 +1034,7 @@ impl App {
             RestorePhase::Done => {
                 log::info!("completed restore");
                 let mut failed = false;
+                let preview = self.operation.preview();
                 let full = self.operation.full();
 
                 self.handle_notify_on_single_game_scanned();
@@ -1020,16 +1061,34 @@ impl App {
                     self.operation.push_error(Error::SomeEntriesFailed);
                 }
 
+                let toast_task = if preview {
+                    Task::none()
+                } else {
+                    let changed = self
+                        .restore_screen
+                        .log
+                        .entries
+                        .iter()
+                        .filter(|entry| entry.scan_info.overall_change().is_changed())
+                        .count();
+                    let message = match changed {
+                        0 => "Nothing to restore".to_string(),
+                        1 => "Restored 1 game".to_string(),
+                        n => format!("Restored {n} games"),
+                    };
+                    self.update(Message::ShowToast { message })
+                };
+
                 let errors = self.operation.errors().cloned();
                 self.go_idle();
 
                 if let Some(errors) = errors
                     && !errors.is_empty()
                 {
-                    return self.show_modal(Modal::Errors { errors });
+                    return Task::batch([toast_task, self.show_modal(Modal::Errors { errors })]);
                 }
 
-                Task::none()
+                toast_task
             }
         }
     }
@@ -1366,7 +1425,6 @@ impl App {
         let mut commands = vec![
             iced::font::load(std::borrow::Cow::Borrowed(crate::gui::font::TEXT_DATA)).map(|_| Message::Ignore),
             iced::font::load(std::borrow::Cow::Borrowed(crate::gui::font::ICONS_DATA)).map(|_| Message::Ignore),
-            iced::window::oldest().and_then(iced::window::gain_focus),
         ];
 
         let mut screen = Screen::default();
@@ -1380,6 +1438,16 @@ impl App {
                 let _ = Config::archive_invalid();
                 Config::default()
             }
+        };
+
+        let start_minimized = flags.minimized || config.tray.start_minimized;
+        let main_window = if start_minimized {
+            None
+        } else {
+            let (main_window, open_main_window) = window::open(crate::gui::main_window_settings());
+            commands.push(open_main_window.map(|_| Message::Ignore));
+            commands.push(window::gain_focus(main_window));
+            Some(main_window)
         };
         let mut cache = Cache::load().unwrap_or_default().migrate_config(&mut config);
         TRANSLATOR.set_language(config.language);
@@ -1474,18 +1542,28 @@ impl App {
                 flags,
                 screen,
                 pending_save,
+                main_window,
                 ..Self::default()
             },
             Task::batch(commands),
         )
     }
 
-    pub fn title(&self) -> String {
-        TRANSLATOR.window_title()
+    pub fn title(&self, id: window::Id) -> String {
+        if Some(id) == self.toast_window {
+            String::new()
+        } else {
+            TRANSLATOR.window_title()
+        }
     }
 
-    pub fn theme(&self) -> crate::gui::style::Theme {
-        crate::gui::style::Theme::from(self.config.theme)
+    pub fn theme(&self, id: window::Id) -> crate::gui::style::Theme {
+        let theme = crate::gui::style::Theme::from(self.config.theme);
+        if Some(id) == self.toast_window {
+            theme.transparent()
+        } else {
+            theme
+        }
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -1501,12 +1579,66 @@ impl App {
                     Task::batch([self.show_modal(Modal::Exiting), self.cancel_operation()])
                 }
             }
+            Message::WindowCloseRequested(id) => {
+                if Some(id) == self.main_window {
+                    #[cfg(windows)]
+                    if self.config.tray.minimize_to_tray_on_close
+                        && let Some(id) = self.main_window.take()
+                    {
+                        return window::close(id);
+                    }
+                    self.update(Message::Exit { user: true })
+                } else if Some(id) == self.toast_window {
+                    self.update(Message::ToastExpired)
+                } else {
+                    Task::none()
+                }
+            }
+            Message::ShowToast { message } => {
+                let settings = crate::gui::toast_window_settings(&message);
+                self.toast_content = Some(message);
+
+                let close_existing = match self.toast_window.take() {
+                    Some(id) => window::close(id),
+                    None => Task::none(),
+                };
+                let (id, open) = window::open(settings);
+                self.toast_window = Some(id);
+
+                Task::batch([
+                    close_existing,
+                    open.map(|_| Message::Ignore),
+                    Task::future(async {
+                        tokio::time::sleep(Duration::from_secs(4)).await;
+                        Message::ToastExpired
+                    }),
+                ])
+            }
+            Message::ToastExpired => {
+                let task = match self.toast_window.take() {
+                    Some(id) => window::close(id),
+                    None => Task::none(),
+                };
+                self.toast_content = None;
+                task
+            }
+            #[cfg(windows)]
+            Message::Tray(command) => self.handle_tray_command(command),
             Message::Save => {
                 self.save();
                 Task::none()
             }
             Message::UpdateTime => {
                 self.progress.update_time();
+                #[cfg(windows)]
+                if self.progress.visible() {
+                    let percent = if self.progress.max > 0.0 {
+                        self.progress.current / self.progress.max * 100.0
+                    } else {
+                        0.0
+                    };
+                    crate::tray::set_tooltip(format!("Ludusavi - {percent:.0}%"));
+                }
                 Task::none()
             }
             Message::PruneNotifications => {
@@ -2033,6 +2165,19 @@ impl App {
                         for entry in &mut self.backup_screen.log.entries {
                             entry.scan_info.only_constructive_backups = value;
                         }
+                    }
+                    config::Event::LaunchAtStartup(value) => {
+                        self.config.tray.launch_at_startup = value;
+                        #[cfg(windows)]
+                        if let Err(e) = crate::resource::autostart::set_enabled(value) {
+                            log::error!("Failed to update launch-at-startup registration: {e}");
+                        }
+                    }
+                    config::Event::StartMinimized(value) => {
+                        self.config.tray.start_minimized = value;
+                    }
+                    config::Event::MinimizeToTrayOnClose(value) => {
+                        self.config.tray.minimize_to_tray_on_close = value;
                     }
                 }
 
@@ -2990,13 +3135,16 @@ impl App {
 
     pub fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![
-            iced::event::listen_with(|event, _status, _window| match event {
+            iced::event::listen_with(|event, _status, window| match event {
                 iced::Event::Keyboard(event) => Some(Message::KeyboardEvent(event)),
-                iced::Event::Window(iced::window::Event::CloseRequested) => Some(Message::Exit { user: true }),
+                iced::Event::Window(iced::window::Event::CloseRequested) => Some(Message::WindowCloseRequested(window)),
                 _ => None,
             }),
             rclone_monitor::run().map(Message::RcloneMonitor),
         ];
+
+        #[cfg(windows)]
+        subscriptions.push(crate::tray::subscription().map(Message::Tray));
 
         if self.timed_notification.is_some() {
             subscriptions.push(iced::time::every(Duration::from_millis(250)).map(|_| Message::PruneNotifications));
@@ -3027,7 +3175,11 @@ impl App {
         iced::Subscription::batch(subscriptions)
     }
 
-    pub fn view(&self) -> Element {
+    pub fn view(&self, id: window::Id) -> Element {
+        if Some(id) == self.toast_window {
+            return self.toast_view();
+        }
+
         let content = Column::new()
             .align_x(Alignment::Center)
             .push(
@@ -3087,5 +3239,63 @@ impl App {
             .push(stack)
             .push_if(self.progress.visible(), || self.progress.view(&self.operation))
             .into()
+    }
+
+    #[cfg(windows)]
+    fn show_main_window(&mut self) -> Task<Message> {
+        match self.main_window {
+            Some(id) => window::gain_focus(id),
+            None => {
+                let (id, open) = window::open(crate::gui::main_window_settings());
+                self.main_window = Some(id);
+                open.map(|_| Message::Ignore)
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn handle_tray_command(&mut self, command: crate::tray::TrayCommand) -> Task<Message> {
+        use crate::tray::TrayCommand;
+
+        match command {
+            TrayCommand::ShowWindow => self.show_main_window(),
+            // Deliberately don't raise the main window here - the tray menu is meant
+            // for running these silently in the background; the toast covers feedback.
+            TrayCommand::Backup => self.update(Message::Backup(BackupPhase::Start {
+                preview: false,
+                repair: false,
+                jump: false,
+                games: None,
+            })),
+            TrayCommand::Restore => self.update(Message::Restore(RestorePhase::Start {
+                preview: false,
+                games: None,
+            })),
+            TrayCommand::Settings => Task::batch([
+                self.show_main_window(),
+                self.update(Message::SwitchScreen(Screen::Other)),
+            ]),
+            TrayCommand::Exit => self.update(Message::Exit { user: true }),
+        }
+    }
+
+    fn toast_view(&self) -> Element {
+        let Some(message) = self.toast_content.clone() else {
+            return Container::new(Column::new()).into();
+        };
+
+        Container::new(
+            Container::new(text(message).size(14))
+                .padding([10, 16])
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+                .class(style::Container::Toast),
+        )
+        .padding(8)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 }

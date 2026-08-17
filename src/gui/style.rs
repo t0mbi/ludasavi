@@ -25,6 +25,10 @@ impl ColorExt for Color {
 pub struct Theme {
     source: config::Theme,
     background: Color,
+    /// Solid popup/card background (e.g. the toast). Kept separate from `background`
+    /// so that `Theme::transparent()` (used for the toast window's own clear color)
+    /// doesn't also wash out the card drawn on top of it.
+    card: Color,
     field: Color,
     text: Color,
     text_inverted: Color,
@@ -47,12 +51,22 @@ impl Default for Theme {
     }
 }
 
+impl Theme {
+    /// Used for windows that render with OS-level transparency (e.g. the toast popup),
+    /// so the window itself clears to see-through instead of an opaque backdrop.
+    pub fn transparent(mut self) -> Self {
+        self.background = Color::TRANSPARENT;
+        self
+    }
+}
+
 impl From<config::Theme> for Theme {
     fn from(source: config::Theme) -> Self {
         match source {
             config::Theme::Light => Self {
                 source,
                 background: Color::WHITE,
+                card: Color::WHITE,
                 field: rgb8!(230, 230, 230),
                 text: Color::BLACK,
                 text_inverted: Color::WHITE,
@@ -71,6 +85,7 @@ impl From<config::Theme> for Theme {
             config::Theme::Dark => Self {
                 source,
                 background: rgb8!(41, 41, 41),
+                card: rgb8!(41, 41, 41),
                 field: rgb8!(74, 74, 74),
                 text: Color::WHITE,
                 text_inverted: Color::BLACK,
@@ -116,6 +131,8 @@ pub enum Text {
     #[default]
     Default,
     Failure,
+    Accent,
+    Muted,
 }
 impl iced::widget::text::Catalog for Theme {
     type Class<'a> = Text;
@@ -129,6 +146,12 @@ impl iced::widget::text::Catalog for Theme {
             Text::Default => iced::widget::text::Style { color: None },
             Text::Failure => iced::widget::text::Style {
                 color: Some(self.negative),
+            },
+            Text::Accent => iced::widget::text::Style {
+                color: Some(self.navigation),
+            },
+            Text::Muted => iced::widget::text::Style {
+                color: Some(self.disabled),
             },
         }
     }
@@ -314,6 +337,7 @@ pub enum Container {
     },
     DisabledBackup,
     Notification,
+    Toast,
     Tooltip,
 }
 impl container::Catalog for Theme {
@@ -330,6 +354,7 @@ impl container::Catalog for Theme {
                 Container::GameListEntry => self.field.alpha(0.15).into(),
                 Container::ModalBackground => self.field.alpha(0.75).into(),
                 Container::Notification => self.field.alpha(0.5).into(),
+                Container::Toast => self.card.alpha(0.9).into(),
                 Container::Tooltip => self.field.into(),
                 Container::DisabledBackup => self.disabled.into(),
                 Container::BadgeActivated => self.negative.into(),
@@ -339,6 +364,7 @@ impl container::Catalog for Theme {
                 color: match class {
                     Container::Wrapper => Color::TRANSPARENT,
                     Container::GameListEntry | Container::Notification => self.field,
+                    Container::Toast => self.navigation.alpha(0.35),
                     Container::ChangeBadge { change, faded } => {
                         if *faded {
                             self.disabled
@@ -374,6 +400,7 @@ impl container::Catalog for Theme {
                     | Container::ChangeBadge { .. }
                     | Container::DisabledBackup => 10.0.into(),
                     Container::Notification | Container::Tooltip => 20.0.into(),
+                    Container::Toast => 14.0.into(),
                     _ => 0.0.into(),
                 },
             },
@@ -396,10 +423,17 @@ impl container::Catalog for Theme {
                 Container::BadgeFaded => Some(self.disabled),
                 _ => Some(self.text),
             },
-            shadow: Shadow {
-                color: Color::TRANSPARENT,
-                offset: Vector::ZERO,
-                blur_radius: 0.0,
+            shadow: match class {
+                Container::Toast => Shadow {
+                    color: Color::BLACK.alpha(0.35),
+                    offset: Vector::new(0.0, 6.0),
+                    blur_radius: 24.0,
+                },
+                _ => Shadow {
+                    color: Color::TRANSPARENT,
+                    offset: Vector::ZERO,
+                    blur_radius: 0.0,
+                },
             },
             snap: true,
         }

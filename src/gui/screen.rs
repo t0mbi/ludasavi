@@ -367,6 +367,31 @@ pub fn other<'a>(
                         ))
                         .push(button::open_url_icon(RELEASE_URL.to_string())),
                 )
+                .push_if(cfg!(windows), || {
+                    Column::new().spacing(5).push(text("Tray")).push(
+                        Container::new(
+                            Column::new()
+                                .padding(5)
+                                .spacing(10)
+                                .push(checkbox(
+                                    "Launch at Windows startup",
+                                    config.tray.launch_at_startup,
+                                    Message::config(config::Event::LaunchAtStartup),
+                                ))
+                                .push(checkbox(
+                                    "Start minimized to tray",
+                                    config.tray.start_minimized,
+                                    Message::config(config::Event::StartMinimized),
+                                ))
+                                .push(checkbox(
+                                    "Minimize to tray when closing the window",
+                                    config.tray.minimize_to_tray_on_close,
+                                    Message::config(config::Event::MinimizeToTrayOnClose),
+                                )),
+                        )
+                        .class(style::Container::GameListEntry),
+                    )
+                })
                 .push(
                     Column::new().spacing(5).push(text(TRANSLATOR.scan_field())).push(
                         Container::new(

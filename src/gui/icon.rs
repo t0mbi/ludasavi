@@ -5,6 +5,7 @@ use crate::gui::{
     widget::{Text, text},
 };
 
+#[derive(Clone, Copy, Debug)]
 pub enum Icon {
     Add,
     AddCircle,

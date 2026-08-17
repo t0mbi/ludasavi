@@ -728,25 +728,25 @@ Overall:
             &ScanInfo {
                 game_name: s("foo"),
                 found_files: hash_map! {
-                    "/file1".into(): ScannedFile {
-                        size: 102_400,
-                        hash: "1".to_string(),
-                        original_path: None,
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
-                    "/file2".into(): ScannedFile {
-                        size: 51_200,
-                        hash: "2".to_string(),
-                        original_path: None,
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
+                                    "/file1".into(): ScannedFile {
+                                        size: 102_400,
+                                        hash: "1".to_string(),
+                                        original_path: None,
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                    "/file2".into(): ScannedFile {
+                                        size: 51_200,
+                                        hash: "2".to_string(),
+                                        original_path: None,
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 found_registry_keys: hash_map! {
                     "HKEY_CURRENT_USER/Key1".into(): ScannedRegistry::new(),
                     "HKEY_CURRENT_USER/Key2".into(): ScannedRegistry::new(),
@@ -797,16 +797,16 @@ Overall:
             &ScanInfo {
                 game_name: s("foo"),
                 found_files: hash_map! {
-                    "/file1".into(): ScannedFile {
-                        size: 1,
-                        hash: "1".to_string(),
-                        original_path: None,
-                        ignored: false,
-                        change: ScanChange::Same,
-                        container: None,
-                        redirected: None,
-                    },
+                                    "/file1".into(): ScannedFile {
+                                        size: 1,
+                                        hash: "1".to_string(),
+                                        original_path: None,
+                                        ignored: false,
+                                        change: ScanChange::Same,
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                },
                 found_registry_keys: hash_map! {},
                 ..Default::default()
             },
@@ -820,16 +820,16 @@ Overall:
             &ScanInfo {
                 game_name: s("bar"),
                 found_files: hash_map! {
-                    "/file2".into(): ScannedFile {
-                        size: 3,
-                        hash: "2".to_string(),
-                        original_path: None,
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
+                                    "/file2".into(): ScannedFile {
+                                        size: 3,
+                                        hash: "2".to_string(),
+                                        original_path: None,
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                },
                 found_registry_keys: hash_map! {},
                 ..Default::default()
             },
@@ -865,25 +865,25 @@ Overall:
             &ScanInfo {
                 game_name: s("foo"),
                 found_files: hash_map! {
-                    "/backup/file1".into(): ScannedFile {
-                        size: 102_400,
-                        hash: "1".to_string(),
-                        original_path: Some(StrictPath::new(s("/original/file1"))),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
-                    "/backup/file2".into(): ScannedFile {
-                        size: 51_200,
-                        hash: "2".to_string(),
-                        original_path: Some(StrictPath::new(s("/original/file2"))),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
+                                    "/backup/file1".into(): ScannedFile {
+                                        size: 102_400,
+                                        hash: "1".to_string(),
+                                        original_path: Some(StrictPath::new(s("/original/file1"))),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                    "/backup/file2".into(): ScannedFile {
+                                        size: 51_200,
+                                        hash: "2".to_string(),
+                                        original_path: Some(StrictPath::new(s("/original/file2"))),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 found_registry_keys: hash_map! {},
                 ..Default::default()
             },
@@ -1206,25 +1206,25 @@ Overall:
             &ScanInfo {
                 game_name: s("foo"),
                 found_files: hash_map! {
-                    "/backup/file1".into(): ScannedFile {
-                        size: 100,
-                        hash: "1".to_string(),
-                        original_path: Some(StrictPath::new(s("/original/file1"))),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
-                    "/backup/file2".into(): ScannedFile {
-                        size: 50,
-                        hash: "2".to_string(),
-                        original_path: Some(StrictPath::new(s("/original/file2"))),
-                        ignored: false,
-                        change: Default::default(),
-                        container: None,
-                        redirected: None,
-                    },
+                                    "/backup/file1".into(): ScannedFile {
+                                        size: 100,
+                                        hash: "1".to_string(),
+                                        original_path: Some(StrictPath::new(s("/original/file1"))),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
                 },
+                                    "/backup/file2".into(): ScannedFile {
+                                        size: 50,
+                                        hash: "2".to_string(),
+                                        original_path: Some(StrictPath::new(s("/original/file2"))),
+                                        ignored: false,
+                                        change: Default::default(),
+                                        container: None,
+                                        redirected: None, last_modified: None,
+                },
+                                },
                 found_registry_keys: hash_map! {},
                 ..Default::default()
             },

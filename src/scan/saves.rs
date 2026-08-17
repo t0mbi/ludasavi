@@ -9,6 +9,8 @@ use crate::{
 pub struct ScannedFile {
     pub size: u64,
     pub hash: String,
+    /// Unix timestamp (seconds) of the file's last modification time, if known.
+    pub last_modified: Option<i64>,
     /// This is the restoration target path, without redirects applied.
     pub original_path: Option<StrictPath>,
     pub ignored: bool,
@@ -24,6 +26,7 @@ impl ScannedFile {
         Self {
             size,
             hash: hash.to_string(),
+            last_modified: None,
             original_path: None,
             ignored: false,
             change: Default::default(),
@@ -37,6 +40,7 @@ impl ScannedFile {
         Self {
             size,
             hash: hash.to_string(),
+            last_modified: None,
             original_path: None,
             ignored: false,
             change,

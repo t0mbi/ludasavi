@@ -1177,6 +1177,13 @@ impl StrictPath {
         }
     }
 
+    /// Unix timestamp (seconds) of the last modification time, if available.
+    pub fn mtime_unix(&self) -> Option<i64> {
+        let modified = self.get_mtime().ok()?;
+        let duration = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+        Some(duration.as_secs() as i64)
+    }
+
     pub fn sha1(&self) -> String {
         self.try_sha1().unwrap_or_default()
     }

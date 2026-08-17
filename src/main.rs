@@ -1,5 +1,7 @@
 mod cli;
 mod gui;
+#[cfg(windows)]
+mod tray;
 
 #[cfg(test)]
 mod testing;
@@ -146,6 +148,29 @@ fn prepare_winit() {
 /// Watch out for non-obvious code paths that may defeat detachment.
 /// flexi_logger's `colors` feature would cause the console to stick around
 /// if logging was enabled before detaching.
+/// Returns `false` if another instance of the GUI is already running (in which case
+/// launch should stop here), or `true` if this is the first instance (or the check
+/// itself failed, in which case we don't want to block a normal launch).
+#[cfg(target_os = "windows")]
+fn acquire_single_instance_lock() -> bool {
+    use windows::{
+        Win32::{
+            Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
+            System::Threading::CreateMutexW,
+        },
+        core::PCWSTR,
+    };
+
+    let name: Vec<u16> = "Ludusavi-SingleInstance-Mutex\0".encode_utf16().collect();
+
+    unsafe {
+        match CreateMutexW(None, false, PCWSTR(name.as_ptr())) {
+            Ok(_handle) => GetLastError() != ERROR_ALREADY_EXISTS,
+            Err(_) => true,
+        }
+    }
+}
+
 #[cfg(target_os = "windows")]
 unsafe fn detach_console(debug: bool) {
     unsafe {
@@ -222,6 +247,12 @@ fn main() {
     match args.sub {
         None => {
             #[cfg(target_os = "windows")]
+            if !acquire_single_instance_lock() {
+                flush_logger();
+                return;
+            }
+
+            #[cfg(target_os = "windows")]
             if std::env::var(crate::prelude::ENV_DEBUG).is_err() {
                 unsafe {
                     detach_console(debug);
@@ -231,10 +262,17 @@ fn main() {
             let flags = Flags {
                 update_manifest: !args.no_manifest_update,
                 custom_game: None,
+                minimized: args.minimized,
             };
             gui::run(flags);
         }
         Some(cli::parse::Subcommand::Gui { custom_game }) => {
+            #[cfg(target_os = "windows")]
+            if !acquire_single_instance_lock() {
+                flush_logger();
+                return;
+            }
+
             #[cfg(target_os = "windows")]
             if std::env::var(crate::prelude::ENV_DEBUG).is_err() {
                 unsafe {
@@ -245,6 +283,7 @@ fn main() {
             let flags = Flags {
                 update_manifest: !args.no_manifest_update,
                 custom_game,
+                minimized: args.minimized,
             };
             gui::run(flags);
         }

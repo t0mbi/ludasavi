@@ -99,6 +99,9 @@ pub enum Event {
     CloudPath(String),
     SortCustomGames,
     OnlyConstructiveBackups(bool),
+    LaunchAtStartup(bool),
+    StartMinimized(bool),
+    MinimizeToTrayOnClose(bool),
 }
 
 /// Settings for `config.yaml`
@@ -118,6 +121,18 @@ pub struct Config {
     pub cloud: Cloud,
     pub apps: Apps,
     pub custom_games: Vec<CustomGame>,
+    pub tray: Tray,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Tray {
+    /// Whether to launch Ludusavi automatically when you log into Windows.
+    pub launch_at_startup: bool,
+    /// Whether to start minimized to the system tray instead of showing the window.
+    pub start_minimized: bool,
+    /// Whether closing the window should minimize to the tray instead of exiting.
+    pub minimize_to_tray_on_close: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -2319,6 +2334,7 @@ mod tests {
                         expanded: false,
                     },
                 ],
+                tray: Default::default(),
             },
             config,
         );
@@ -2444,6 +2460,10 @@ customGames:
     registry: []
     installDir: []
     winePrefix: []
+tray:
+  launchAtStartup: false
+  startMinimized: false
+  minimizeToTrayOnClose: false
 "#
             .trim(),
             serde_yaml::to_string(&Config {
@@ -2553,6 +2573,7 @@ customGames:
                         expanded: false,
                     },
                 ],
+                tray: Default::default(),
             })
             .unwrap()
             .trim(),

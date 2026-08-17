@@ -33,6 +33,7 @@ pub const ERROR_ICON: text_input::Icon<iced::Font> = text_input::Icon {
 pub struct Flags {
     pub update_manifest: bool,
     pub custom_game: Option<String>,
+    pub minimized: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +110,13 @@ pub enum Message {
     Exit {
         user: bool,
     },
+    WindowCloseRequested(iced::window::Id),
+    ShowToast {
+        message: String,
+    },
+    ToastExpired,
+    #[cfg(windows)]
+    Tray(crate::tray::TrayCommand),
     Save,
     CloseModal,
     UpdateTime,

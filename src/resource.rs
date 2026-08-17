@@ -1,3 +1,5 @@
+#[cfg(windows)]
+pub mod autostart;
 pub mod cache;
 pub mod config;
 pub mod manifest;

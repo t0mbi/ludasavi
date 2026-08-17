@@ -881,6 +881,11 @@ pub struct Cli {
     #[clap(long)]
     pub debug: bool,
 
+    /// When launching the GUI, start minimized to the system tray
+    /// instead of showing the window immediately.
+    #[clap(long)]
+    pub minimized: bool,
+
     #[clap(subcommand)]
     pub sub: Option<Subcommand>,
 }
@@ -911,6 +916,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: None,
             },
         );
@@ -925,6 +931,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backup {
                     preview: false,
                     path: None,
@@ -989,6 +996,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backup {
                     preview: true,
                     path: Some(StrictPath::relative(s("tests/backup"), Some(repo_raw()))),
@@ -1023,6 +1031,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backup {
                     preview: false,
                     path: Some(StrictPath::relative(s("tests/fake"), Some(repo_raw()))),
@@ -1065,6 +1074,7 @@ mod tests {
                     no_manifest_update: false,
                     try_manifest_update: false,
                     debug: false,
+                    minimized: false,
                     sub: Some(Subcommand::Backup {
                         preview: false,
                         path: None,
@@ -1100,6 +1110,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backup {
                     preview: false,
                     path: None,
@@ -1134,6 +1145,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Restore {
                     preview: false,
                     path: None,
@@ -1182,6 +1194,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Restore {
                     preview: true,
                     path: Some(StrictPath::relative(
@@ -1230,6 +1243,7 @@ mod tests {
                     no_manifest_update: false,
                     try_manifest_update: false,
                     debug: false,
+                    minimized: false,
                     sub: Some(Subcommand::Restore {
                         preview: false,
                         path: None,
@@ -1260,6 +1274,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Complete {
                     shell: CompletionShell::Bash,
                 }),
@@ -1276,6 +1291,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Complete {
                     shell: CompletionShell::Fish,
                 }),
@@ -1292,6 +1308,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Complete {
                     shell: CompletionShell::Zsh,
                 }),
@@ -1308,6 +1325,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Complete {
                     shell: CompletionShell::PowerShell,
                 }),
@@ -1324,6 +1342,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Complete {
                     shell: CompletionShell::Elvish,
                 }),
@@ -1340,6 +1359,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backups {
                     sub: None,
                     path: None,
@@ -1367,6 +1387,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backups {
                     sub: None,
                     path: Some(StrictPath::relative(s("tests/backup"), Some(repo_raw()))),
@@ -1386,6 +1407,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backups {
                     sub: Some(BackupsSubcommand::Edit {
                         path: None,
@@ -1424,6 +1446,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Backups {
                     sub: Some(BackupsSubcommand::Edit {
                         path: Some(StrictPath::relative(s("tests/backup"), Some(repo_raw()))),
@@ -1450,6 +1473,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Find {
                     api: false,
                     multiple: false,
@@ -1499,6 +1523,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Find {
                     api: true,
                     multiple: true,
@@ -1527,6 +1552,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Gui { custom_game: None }),
             },
         );
@@ -1541,6 +1567,7 @@ mod tests {
                 no_manifest_update: false,
                 try_manifest_update: false,
                 debug: false,
+                minimized: false,
                 sub: Some(Subcommand::Gui {
                     custom_game: Some("foo".to_string()),
                 }),
