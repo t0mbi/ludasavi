@@ -144,11 +144,58 @@ fn chip_container<'a>(class: style::Container, content: Element<'a>) -> Element<
         .into()
 }
 
-/// The app icon glyph doesn't render correctly inside the toast window (tried both a raster
-/// image and the app's icon font; both produced garbage). Leaving the chip as a plain colored
-/// shape for now rather than guess a third approach.
+/// A simplified redraw of assets/icon.svg (rounded-square frame + dot grid), via canvas -
+/// the one rendering path that's actually worked reliably in this toast so far. Skips the
+/// logo's complex wavy accent path; at chip size that detail wouldn't read clearly anyway.
+struct LogoProgram;
+
+impl<Message> canvas::Program<Message, style::Theme> for LogoProgram {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &iced::Renderer,
+        _theme: &style::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let scale = bounds.width.min(bounds.height) / 46.08;
+
+        let frame_rect = Path::rounded_rectangle(
+            Point::new(14.4 * scale, 8.64 * scale),
+            iced::Size::new(23.76 * scale, 23.76 * scale),
+            (0.72 * scale).into(),
+        );
+        frame.stroke(
+            &frame_rect,
+            Stroke {
+                style: stroke::Style::Solid(PINK),
+                width: 4.32 * scale,
+                line_join: canvas::LineJoin::Bevel,
+                ..Stroke::default()
+            },
+        );
+
+        let dot_centers: [(f32, f32); 6] = [
+            (5.74, 5.76),
+            (5.77, 14.35),
+            (21.58, 15.81),
+            (30.94, 15.85),
+            (21.56, 25.20),
+            (30.94, 25.21),
+        ];
+        for (x, y) in dot_centers {
+            frame.fill(&Path::circle(Point::new(x * scale, y * scale), 1.77 * scale), PINK);
+        }
+
+        vec![frame.into_geometry()]
+    }
+}
+
 fn app_icon(size: f32) -> Element<'static> {
-    Space::new().width(size).height(size).into()
+    Canvas::new(LogoProgram).width(size).height(size).into()
 }
 
 fn percent_label(percent: u8) -> Element<'static> {

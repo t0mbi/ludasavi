@@ -53,7 +53,7 @@ pub(crate) fn toast_window_settings(width_hint: usize) -> iced::window::Settings
     let width = (width_hint as f32 * 7.6 + 78.0).clamp(300.0, 380.0);
 
     iced::window::Settings {
-        size: Size::new(width, 116.0),
+        size: Size::new(width, 96.0),
         min_size: None,
         max_size: None,
         resizable: false,
