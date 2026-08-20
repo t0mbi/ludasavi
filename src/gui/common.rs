@@ -112,8 +112,9 @@ pub enum Message {
     },
     WindowCloseRequested(iced::window::Id),
     ShowToast {
-        message: String,
+        kind: crate::gui::toast::ToastKind,
     },
+    TickToastAnimation,
     ToastExpired,
     #[cfg(windows)]
     Tray(crate::tray::TrayCommand),

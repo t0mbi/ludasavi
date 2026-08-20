@@ -3,7 +3,7 @@ use iced::{
     widget::{button, checkbox, container, pick_list, scrollable, text_editor, text_input},
 };
 
-use crate::{resource::config, scan::ScanChange};
+use crate::{gui::toast, resource::config, scan::ScanChange};
 
 macro_rules! rgb8 {
     ($r:expr, $g:expr, $b:expr) => {
@@ -25,10 +25,6 @@ impl ColorExt for Color {
 pub struct Theme {
     source: config::Theme,
     background: Color,
-    /// Solid popup/card background (e.g. the toast). Kept separate from `background`
-    /// so that `Theme::transparent()` (used for the toast window's own clear color)
-    /// doesn't also wash out the card drawn on top of it.
-    card: Color,
     field: Color,
     text: Color,
     text_inverted: Color,
@@ -66,7 +62,6 @@ impl From<config::Theme> for Theme {
             config::Theme::Light => Self {
                 source,
                 background: Color::WHITE,
-                card: Color::WHITE,
                 field: rgb8!(230, 230, 230),
                 text: Color::BLACK,
                 text_inverted: Color::WHITE,
@@ -85,7 +80,6 @@ impl From<config::Theme> for Theme {
             config::Theme::Dark => Self {
                 source,
                 background: rgb8!(41, 41, 41),
-                card: rgb8!(41, 41, 41),
                 field: rgb8!(74, 74, 74),
                 text: Color::WHITE,
                 text_inverted: Color::BLACK,
@@ -133,6 +127,13 @@ pub enum Text {
     Failure,
     Accent,
     Muted,
+    /// Fixed (theme-independent) colors for the toast's dark glass card.
+    ToastTitle,
+    ToastSubtitle,
+    ToastPercent,
+    ToastPercentUnit,
+    ToastCheck,
+    ToastError,
 }
 impl iced::widget::text::Catalog for Theme {
     type Class<'a> = Text;
@@ -149,6 +150,24 @@ impl iced::widget::text::Catalog for Theme {
             },
             Text::Accent => iced::widget::text::Style {
                 color: Some(self.navigation),
+            },
+            Text::ToastTitle => iced::widget::text::Style {
+                color: Some(Color::WHITE),
+            },
+            Text::ToastSubtitle => iced::widget::text::Style {
+                color: Some(Color::WHITE.alpha(0.55)),
+            },
+            Text::ToastPercent => iced::widget::text::Style {
+                color: Some(toast::PINK),
+            },
+            Text::ToastPercentUnit => iced::widget::text::Style {
+                color: Some(toast::PINK.alpha(0.7)),
+            },
+            Text::ToastCheck => iced::widget::text::Style {
+                color: Some(toast::DARK),
+            },
+            Text::ToastError => iced::widget::text::Style {
+                color: Some(toast::RED),
             },
             Text::Muted => iced::widget::text::Style {
                 color: Some(self.disabled),
@@ -337,8 +356,18 @@ pub enum Container {
     },
     DisabledBackup,
     Notification,
-    Toast,
     Tooltip,
+    /// Fixed (theme-independent) surfaces for the toast's dark glass card.
+    ToastCard,
+    ToastChipTransparent,
+    ToastChipDone,
+    ToastChipNoChanges,
+    ToastChipError,
+    ToastBarTrack,
+    ToastBarFill,
+    ToastCheckCircle,
+    ToastErrorBadge,
+    ToastTimerLine,
 }
 impl container::Catalog for Theme {
     type Class<'a> = Container;
@@ -354,17 +383,25 @@ impl container::Catalog for Theme {
                 Container::GameListEntry => self.field.alpha(0.15).into(),
                 Container::ModalBackground => self.field.alpha(0.75).into(),
                 Container::Notification => self.field.alpha(0.5).into(),
-                Container::Toast => self.card.alpha(0.9).into(),
                 Container::Tooltip => self.field.into(),
                 Container::DisabledBackup => self.disabled.into(),
                 Container::BadgeActivated => self.negative.into(),
+                Container::ToastCard => Color::from_rgba(26.0 / 255.0, 26.0 / 255.0, 31.0 / 255.0, 0.92).into(),
+                Container::ToastChipTransparent => Color::TRANSPARENT.into(),
+                Container::ToastChipDone => toast::PINK.alpha(0.14).into(),
+                Container::ToastChipNoChanges => Color::WHITE.alpha(0.06).into(),
+                Container::ToastChipError => toast::RED.alpha(0.15).into(),
+                Container::ToastBarTrack => Color::WHITE.alpha(0.1).into(),
+                Container::ToastBarFill => toast::PINK.into(),
+                Container::ToastCheckCircle => toast::GREEN.into(),
+                Container::ToastErrorBadge => toast::RED.into(),
+                Container::ToastTimerLine => Color::WHITE.alpha(0.35).into(),
                 _ => self.background.into(),
             }),
             border: Border {
                 color: match class {
                     Container::Wrapper => Color::TRANSPARENT,
                     Container::GameListEntry | Container::Notification => self.field,
-                    Container::Toast => self.navigation.alpha(0.35),
                     Container::ChangeBadge { change, faded } => {
                         if *faded {
                             self.disabled
@@ -379,6 +416,10 @@ impl container::Catalog for Theme {
                     }
                     Container::BadgeActivated => self.negative,
                     Container::ModalForeground | Container::BadgeFaded => self.disabled,
+                    Container::ToastCard => Color::WHITE.alpha(0.09),
+                    Container::ToastChipDone => toast::PINK.alpha(0.28),
+                    Container::ToastChipNoChanges => Color::WHITE.alpha(0.12),
+                    Container::ToastChipError => toast::RED.alpha(0.35),
                     _ => self.text,
                 },
                 width: match class {
@@ -388,7 +429,11 @@ impl container::Catalog for Theme {
                     | Container::BadgeActivated
                     | Container::BadgeFaded
                     | Container::ChangeBadge { .. }
-                    | Container::Notification => 1.0,
+                    | Container::Notification
+                    | Container::ToastCard
+                    | Container::ToastChipDone
+                    | Container::ToastChipNoChanges
+                    | Container::ToastChipError => 1.0,
                     _ => 0.0,
                 },
                 radius: match class {
@@ -400,7 +445,14 @@ impl container::Catalog for Theme {
                     | Container::ChangeBadge { .. }
                     | Container::DisabledBackup => 10.0.into(),
                     Container::Notification | Container::Tooltip => 20.0.into(),
-                    Container::Toast => 14.0.into(),
+                    Container::ToastCard => 16.0.into(),
+                    Container::ToastChipTransparent
+                    | Container::ToastChipDone
+                    | Container::ToastChipNoChanges
+                    | Container::ToastChipError => 11.0.into(),
+                    Container::ToastBarTrack | Container::ToastBarFill => 4.0.into(),
+                    Container::ToastCheckCircle | Container::ToastErrorBadge => 999.0.into(),
+                    Container::ToastTimerLine => 1.5.into(),
                     _ => 0.0.into(),
                 },
             },
@@ -424,10 +476,10 @@ impl container::Catalog for Theme {
                 _ => Some(self.text),
             },
             shadow: match class {
-                Container::Toast => Shadow {
-                    color: Color::BLACK.alpha(0.35),
-                    offset: Vector::new(0.0, 6.0),
-                    blur_radius: 24.0,
+                Container::ToastCard => Shadow {
+                    color: Color::BLACK.alpha(0.55),
+                    offset: Vector::new(0.0, 10.0),
+                    blur_radius: 34.0,
                 },
                 _ => Shadow {
                     color: Color::TRANSPARENT,

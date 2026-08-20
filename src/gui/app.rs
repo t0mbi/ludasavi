@@ -18,10 +18,7 @@ use crate::{
         screen,
         shortcuts::{RootHistory, Shortcut, TextHistories, TextHistory},
         style,
-        widget::{
-            Column, Container, Element, IcedParentExt, Progress, Row, Stack, id, operation::container_scroll_offset,
-            text,
-        },
+        widget::{Column, Container, Element, IcedParentExt, Progress, Row, Stack, id, operation::container_scroll_offset},
     },
     lang::TRANSLATOR,
     prelude::{
@@ -119,7 +116,7 @@ pub struct App {
     jump_to_game_after_scan: Option<String>,
     main_window: Option<window::Id>,
     toast_window: Option<window::Id>,
-    toast_content: Option<String>,
+    toast: Option<crate::gui::toast::Toast>,
 }
 
 impl App {
@@ -354,7 +351,11 @@ impl App {
                     self.refresh_scroll_position_on_log(cleared_log),
                     if !preview {
                         self.update(Message::ShowToast {
-                            message: "Backing up saves…".to_string(),
+                            kind: crate::gui::toast::ToastKind::Progress {
+                                title: "Backing up…".to_string(),
+                                subtitle: "Starting…".to_string(),
+                                percent: 0,
+                            },
                         })
                     } else {
                         Task::none()
@@ -707,19 +708,35 @@ impl App {
                 let toast_task = if preview {
                     Task::none()
                 } else {
-                    let changed = self
+                    let changed_entries: Vec<_> = self
                         .backup_screen
                         .log
                         .entries
                         .iter()
                         .filter(|entry| entry.backup_info.as_ref().is_some_and(|info| info.changed()))
-                        .count();
-                    let message = match changed {
-                        0 => "No changes to back up".to_string(),
-                        1 => "Backed up 1 game".to_string(),
-                        n => format!("Backed up {n} games"),
+                        .collect();
+                    let kind = if changed_entries.is_empty() {
+                        crate::gui::toast::ToastKind::NoChanges {
+                            title: "No changes to back up".to_string(),
+                            subtitle: "Everything's already saved".to_string(),
+                        }
+                    } else {
+                        let bytes: u64 = changed_entries
+                            .iter()
+                            .flat_map(|entry| entry.scan_info.found_files.values())
+                            .map(|file| file.size)
+                            .sum();
+                        let count = changed_entries.len();
+                        crate::gui::toast::ToastKind::Done {
+                            title: "Backup complete".to_string(),
+                            subtitle: format!(
+                                "{count} game{} · {} saved",
+                                if count == 1 { "" } else { "s" },
+                                TRANSLATOR.adjusted_size(bytes)
+                            ),
+                        }
                     };
-                    self.update(Message::ShowToast { message })
+                    self.update(Message::ShowToast { kind })
                 };
 
                 let errors = self.operation.errors().cloned();
@@ -728,7 +745,13 @@ impl App {
                 if let Some(errors) = errors
                     && !errors.is_empty()
                 {
-                    return Task::batch([toast_task, self.show_modal(Modal::Errors { errors })]);
+                    let error_toast = self.update(Message::ShowToast {
+                        kind: crate::gui::toast::ToastKind::Error {
+                            title: "Backup failed".to_string(),
+                            subtitle: "Some saves couldn't be backed up".to_string(),
+                        },
+                    });
+                    return Task::batch([error_toast, self.show_modal(Modal::Errors { errors })]);
                 }
 
                 if let Some(jump) = self.jump_to_game_after_scan.take()
@@ -806,7 +829,11 @@ impl App {
                     self.refresh_scroll_position_on_log(cleared_log),
                     if !preview {
                         self.update(Message::ShowToast {
-                            message: "Restoring saves…".to_string(),
+                            kind: crate::gui::toast::ToastKind::Progress {
+                                title: "Restoring…".to_string(),
+                                subtitle: "Starting…".to_string(),
+                                percent: 0,
+                            },
                         })
                     } else {
                         Task::none()
@@ -1064,19 +1091,25 @@ impl App {
                 let toast_task = if preview {
                     Task::none()
                 } else {
-                    let changed = self
+                    let count = self
                         .restore_screen
                         .log
                         .entries
                         .iter()
                         .filter(|entry| entry.backup_info.as_ref().is_some_and(|info| info.changed()))
                         .count();
-                    let message = match changed {
-                        0 => "Nothing to restore".to_string(),
-                        1 => "Restored 1 game".to_string(),
-                        n => format!("Restored {n} games"),
+                    let kind = if count == 0 {
+                        crate::gui::toast::ToastKind::NoChanges {
+                            title: "Nothing to restore".to_string(),
+                            subtitle: "Everything's already up to date".to_string(),
+                        }
+                    } else {
+                        crate::gui::toast::ToastKind::Done {
+                            title: "Restore complete".to_string(),
+                            subtitle: format!("{count} game{}", if count == 1 { "" } else { "s" }),
+                        }
                     };
-                    self.update(Message::ShowToast { message })
+                    self.update(Message::ShowToast { kind })
                 };
 
                 let errors = self.operation.errors().cloned();
@@ -1085,7 +1118,13 @@ impl App {
                 if let Some(errors) = errors
                     && !errors.is_empty()
                 {
-                    return Task::batch([toast_task, self.show_modal(Modal::Errors { errors })]);
+                    let error_toast = self.update(Message::ShowToast {
+                        kind: crate::gui::toast::ToastKind::Error {
+                            title: "Restore failed".to_string(),
+                            subtitle: "Some saves couldn't be restored".to_string(),
+                        },
+                    });
+                    return Task::batch([error_toast, self.show_modal(Modal::Errors { errors })]);
                 }
 
                 toast_task
@@ -1594,9 +1633,24 @@ impl App {
                     Task::none()
                 }
             }
-            Message::ShowToast { message } => {
-                let settings = crate::gui::toast_window_settings(&message);
-                self.toast_content = Some(message);
+            Message::ShowToast { kind } => {
+                use crate::gui::toast::{Toast, ToastKind};
+
+                let is_progress = matches!(kind, ToastKind::Progress { .. });
+                let updating_in_place = is_progress
+                    && self.toast_window.is_some()
+                    && matches!(self.toast.as_ref().map(|t| &t.kind), Some(ToastKind::Progress { .. }));
+
+                if updating_in_place {
+                    // Keep the original `created` time so the spinner animation stays smooth.
+                    if let Some(toast) = &mut self.toast {
+                        toast.kind = kind;
+                    }
+                    return Task::none();
+                }
+
+                let settings = crate::gui::toast_window_settings(kind.width_hint());
+                self.toast = Some(Toast::new(kind));
 
                 let close_existing = match self.toast_window.take() {
                     Some(id) => window::close(id),
@@ -1605,21 +1659,24 @@ impl App {
                 let (id, open) = window::open(settings);
                 self.toast_window = Some(id);
 
-                Task::batch([
-                    close_existing,
-                    open.map(|_| Message::Ignore),
+                let auto_dismiss = if is_progress {
+                    Task::none()
+                } else {
                     Task::future(async {
-                        tokio::time::sleep(Duration::from_secs(4)).await;
+                        tokio::time::sleep(Duration::from_secs(3)).await;
                         Message::ToastExpired
-                    }),
-                ])
+                    })
+                };
+
+                Task::batch([close_existing, open.map(|_| Message::Ignore), auto_dismiss])
             }
+            Message::TickToastAnimation => Task::none(),
             Message::ToastExpired => {
                 let task = match self.toast_window.take() {
                     Some(id) => window::close(id),
                     None => Task::none(),
                 };
-                self.toast_content = None;
+                self.toast = None;
                 task
             }
             #[cfg(windows)]
@@ -1630,15 +1687,49 @@ impl App {
             }
             Message::UpdateTime => {
                 self.progress.update_time();
-                #[cfg(windows)]
-                if self.progress.visible() {
-                    let percent = if self.progress.max > 0.0 {
-                        self.progress.current / self.progress.max * 100.0
-                    } else {
-                        0.0
-                    };
-                    crate::tray::set_tooltip(format!("Ludusavi - {percent:.0}%"));
+
+                if !self.progress.visible() {
+                    return Task::none();
                 }
+                let percent = if self.progress.max > 0.0 {
+                    self.progress.current / self.progress.max * 100.0
+                } else {
+                    0.0
+                };
+
+                #[cfg(windows)]
+                crate::tray::set_tooltip(format!("Ludusavi - {percent:.0}%"));
+
+                if self
+                    .toast
+                    .as_ref()
+                    .is_some_and(|t| matches!(t.kind, crate::gui::toast::ToastKind::Progress { .. }))
+                {
+                    let done = self.progress.current as usize;
+                    let total = self.progress.max as usize;
+                    let current_game = self
+                        .operation
+                        .active_games()
+                        .and_then(|games| games.keys().next())
+                        .cloned();
+                    let title = match &self.operation {
+                        Operation::Backup { .. } => "Backing up…",
+                        Operation::Restore { .. } => "Restoring…",
+                        _ => "Working…",
+                    };
+                    let subtitle = match current_game {
+                        Some(game) => format!("{game} · {done} of {total}"),
+                        None => format!("{done} of {total}"),
+                    };
+                    return self.update(Message::ShowToast {
+                        kind: crate::gui::toast::ToastKind::Progress {
+                            title: title.to_string(),
+                            subtitle,
+                            percent: percent.round() as u8,
+                        },
+                    });
+                }
+
                 Task::none()
             }
             Message::PruneNotifications => {
@@ -3154,6 +3245,10 @@ impl App {
             subscriptions.push(iced::time::every(Duration::from_millis(100)).map(|_| Message::UpdateTime));
         }
 
+        if self.toast_window.is_some() {
+            subscriptions.push(iced::time::every(Duration::from_millis(33)).map(|_| Message::TickToastAnimation));
+        }
+
         if !self.pending_save.is_empty() {
             subscriptions.push(iced::time::every(Duration::from_millis(200)).map(|_| Message::Save));
         }
@@ -3280,22 +3375,10 @@ impl App {
     }
 
     fn toast_view(&self) -> Element {
-        let Some(message) = self.toast_content.clone() else {
+        let Some(toast) = self.toast.as_ref() else {
             return Container::new(Column::new()).into();
         };
-
-        Container::new(
-            Container::new(text(message).size(14))
-                .padding([10, 16])
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
-                .class(style::Container::Toast),
-        )
-        .padding(8)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        let icon = iced::widget::image::Handle::from_bytes(include_bytes!("../../assets/icon.png").as_slice());
+        crate::gui::toast::view(toast, Some(icon))
     }
 }

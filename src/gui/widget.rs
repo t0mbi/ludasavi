@@ -16,6 +16,7 @@ pub type Renderer = iced::Renderer;
 pub type Element<'a> = iced::Element<'a, Message, Theme, Renderer>;
 
 pub type Button<'a> = w::Button<'a, Message, Theme, Renderer>;
+pub type Canvas<P> = w::Canvas<P, Message, Theme, Renderer>;
 pub type Checkbox<'a> = w::Checkbox<'a, Message, Theme, Renderer>;
 pub type Column<'a> = w::Column<'a, Message, Theme, Renderer>;
 pub type Container<'a> = w::Container<'a, Message, Theme, Renderer>;

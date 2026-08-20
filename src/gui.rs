@@ -14,6 +14,7 @@ mod screen;
 mod search;
 mod shortcuts;
 mod style;
+mod toast;
 mod undoable;
 mod widget;
 
@@ -47,13 +48,12 @@ pub(crate) fn main_window_settings() -> iced::window::Settings {
 }
 
 /// Small borderless popup used for backup/restore activity toasts.
-/// The window is sized to roughly fit `message`, so short messages get a compact pill
-/// instead of a fixed-width box with empty space.
-pub(crate) fn toast_window_settings(message: &str) -> iced::window::Settings {
-    let width = (message.chars().count() as f32 * 7.6 + 48.0).clamp(160.0, 420.0);
+/// The window is sized to roughly fit the longer of the toast's title/subtitle text.
+pub(crate) fn toast_window_settings(width_hint: usize) -> iced::window::Settings {
+    let width = (width_hint as f32 * 7.6 + 78.0).clamp(300.0, 380.0);
 
     iced::window::Settings {
-        size: Size::new(width, 52.0),
+        size: Size::new(width, 92.0),
         min_size: None,
         max_size: None,
         resizable: false,
