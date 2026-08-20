@@ -712,7 +712,7 @@ impl App {
                         .log
                         .entries
                         .iter()
-                        .filter(|entry| entry.scan_info.overall_change().is_changed())
+                        .filter(|entry| entry.backup_info.as_ref().is_some_and(|info| info.changed()))
                         .count();
                     let message = match changed {
                         0 => "No changes to back up".to_string(),
@@ -1069,7 +1069,7 @@ impl App {
                         .log
                         .entries
                         .iter()
-                        .filter(|entry| entry.scan_info.overall_change().is_changed())
+                        .filter(|entry| entry.backup_info.as_ref().is_some_and(|info| info.changed()))
                         .count();
                     let message = match changed {
                         0 => "Nothing to restore".to_string(),

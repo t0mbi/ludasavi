@@ -761,6 +761,7 @@ Overall:
                 failed_registry: hash_map! {
                     "HKEY_CURRENT_USER/Key1".into(): BackupError::Test
                 },
+                changed_files: 0,
             }),
             &OperationStepDecision::Processed,
             &DuplicateDetector::default(),
@@ -1128,6 +1129,7 @@ Overall:
                 failed_registry: hash_map! {
                     "HKEY_CURRENT_USER/Key1".into(): BackupError::Test
                 },
+                changed_files: 0,
             }),
             &OperationStepDecision::Processed,
             &DuplicateDetector::default(),

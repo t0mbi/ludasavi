@@ -29,11 +29,18 @@ impl BackupError {
 pub struct BackupInfo {
     pub failed_files: HashMap<StrictPath, BackupError>,
     pub failed_registry: HashMap<RegistryItem, BackupError>,
+    /// Ground truth count of files actually written to the backup/restore destination
+    /// this run (as opposed to skipped because the content already matched).
+    pub changed_files: usize,
 }
 
 impl BackupInfo {
     pub fn successful(&self) -> bool {
         self.failed_files.is_empty() && self.failed_registry.is_empty()
+    }
+
+    pub fn changed(&self) -> bool {
+        self.changed_files > 0
     }
 
     pub fn total_failure(scan: &ScanInfo, error: BackupError) -> Self {

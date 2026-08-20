@@ -1237,6 +1237,7 @@ impl GameLayout {
                 continue;
             }
             log::info!("[{}] backed up: {:?} -> {:?}", self.mapping.name, scan_key, target_file);
+            backup_info.changed_files += 1;
             relevant_files.push(target_file);
         }
 
@@ -1373,6 +1374,7 @@ impl GameLayout {
                         &scan_key,
                         &target_file_id
                     );
+                    backup_info.changed_files += 1;
                     break;
                 }
                 if let Err(e) = zip.write_all(&buffer[0..read]) {
@@ -1777,6 +1779,7 @@ impl GameLayout {
         let mut failed_files = HashMap::new();
         #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
         let mut failed_registry = HashMap::new();
+        let mut changed_files = 0;
 
         let mut containers: HashMap<StrictPath, zip::ZipArchive<std::fs::File>> = HashMap::new();
         let mut failed_containers: HashMap<StrictPath, BackupError> = HashMap::new();
@@ -1855,6 +1858,7 @@ impl GameLayout {
             match outcome {
                 Ok(_) => {
                     log::info!("[{}] restored: {:?} -> {:?}", &self.mapping.name, scan_key, &target);
+                    changed_files += 1;
                 }
                 Err(e) => {
                     log::error!(
@@ -1883,6 +1887,7 @@ impl GameLayout {
         BackupInfo {
             failed_files,
             failed_registry,
+            changed_files,
         }
     }
 
