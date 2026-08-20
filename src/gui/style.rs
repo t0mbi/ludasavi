@@ -386,7 +386,7 @@ impl container::Catalog for Theme {
                 Container::Tooltip => self.field.into(),
                 Container::DisabledBackup => self.disabled.into(),
                 Container::BadgeActivated => self.negative.into(),
-                Container::ToastCard => Color::from_rgba(26.0 / 255.0, 26.0 / 255.0, 31.0 / 255.0, 0.92).into(),
+                Container::ToastCard => Color::from_rgb(26.0 / 255.0, 26.0 / 255.0, 31.0 / 255.0).into(),
                 Container::ToastChipTransparent => Color::TRANSPARENT.into(),
                 Container::ToastChipDone => toast::PINK.alpha(0.14).into(),
                 Container::ToastChipNoChanges => Color::WHITE.alpha(0.06).into(),
