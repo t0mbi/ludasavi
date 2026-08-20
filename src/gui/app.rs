@@ -1705,21 +1705,20 @@ impl App {
                     .as_ref()
                     .is_some_and(|t| matches!(t.kind, crate::gui::toast::ToastKind::Progress { .. }))
                 {
-                    let done = self.progress.current as usize;
-                    let total = self.progress.max as usize;
                     let current_game = self
                         .operation
                         .active_games()
                         .and_then(|games| games.keys().next())
                         .cloned();
-                    let title = match &self.operation {
-                        Operation::Backup { .. } => "Backing up…",
-                        Operation::Restore { .. } => "Restoring…",
-                        _ => "Working…",
+                    let (title, found) = match &self.operation {
+                        Operation::Backup { .. } => ("Backing up…", self.backup_screen.log.entries.len()),
+                        Operation::Restore { .. } => ("Restoring…", self.restore_screen.log.entries.len()),
+                        _ => ("Working…", 0),
                     };
+                    let found_label = format!("{found} game{} found", if found == 1 { "" } else { "s" });
                     let subtitle = match current_game {
-                        Some(game) => format!("{game} · {done} of {total}"),
-                        None => format!("{done} of {total}"),
+                        Some(game) => format!("{game} · {found_label}"),
+                        None => found_label,
                     };
                     return self.update(Message::ShowToast {
                         kind: crate::gui::toast::ToastKind::Progress {
@@ -3378,7 +3377,6 @@ impl App {
         let Some(toast) = self.toast.as_ref() else {
             return Container::new(Column::new()).into();
         };
-        let icon = iced::widget::image::Handle::from_bytes(include_bytes!("../../assets/icon.png").as_slice());
-        crate::gui::toast::view(toast, Some(icon))
+        crate::gui::toast::view(toast)
     }
 }

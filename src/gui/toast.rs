@@ -65,26 +65,25 @@ fn eased_progress(elapsed: Duration, delay_ms: u64, duration_ms: u64) -> f32 {
     ease_out_cubic(elapsed_ms as f32 / duration_ms as f32)
 }
 
-pub fn view(toast: &Toast, icon_handle: Option<iced::widget::image::Handle>) -> Element<'static> {
+pub fn view(toast: &Toast) -> Element<'static> {
     let elapsed = toast.created.elapsed();
 
     let (chip, title, subtitle, accessory, bar): (Element, String, String, Option<Element>, Option<Element>) =
         match &toast.kind {
             ToastKind::Progress { title, subtitle, percent } => {
                 let angle = Radians((elapsed.as_millis() as f32 / 900.0) * std::f32::consts::TAU);
-                let chip = chip_container(style::Container::ToastChipTransparent, spinner(angle, icon_handle.clone()));
+                let chip = chip_container(style::Container::ToastChipTransparent, spinner(angle));
                 let fill = eased_progress(elapsed, 400, 1200) * (*percent as f32 / 100.0);
                 (chip, title.clone(), subtitle.clone(), Some(percent_label(*percent)), Some(progress_bar(fill)))
             }
             ToastKind::Done { title, subtitle } => {
-                let chip = chip_container(style::Container::ToastChipDone, icon_image(icon_handle.clone(), 24.0));
+                let chip = chip_container(style::Container::ToastChipDone, app_icon(24.0));
                 let pop = eased_progress(elapsed, 550, 350);
                 let fill = eased_progress(elapsed, 500, 1000);
                 (chip, title.clone(), subtitle.clone(), Some(check_circle(pop)), Some(progress_bar(fill)))
             }
             ToastKind::NoChanges { title, subtitle } => {
-                let chip =
-                    chip_container(style::Container::ToastChipNoChanges, icon_image(icon_handle.clone(), 22.0));
+                let chip = chip_container(style::Container::ToastChipNoChanges, app_icon(22.0));
                 (chip, title.clone(), subtitle.clone(), None, None)
             }
             ToastKind::Error { title, subtitle } => {
@@ -119,15 +118,11 @@ pub fn view(toast: &Toast, icon_handle: Option<iced::widget::image::Handle>) -> 
     // Auto-dismiss timer line for the "no changes" state.
     let with_timer: Element = if matches!(toast.kind, ToastKind::NoChanges { .. }) {
         let remaining = (1.0 - eased_progress(elapsed, 500, 2500)).max(0.0);
-        let timer = Container::new(
-            Container::new(Space::new())
-                .width(Length::FillPortion((remaining * 1000.0).max(1.0) as u16))
-                .height(3)
-                .class(style::Container::ToastTimerLine),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_y(Alignment::End);
+        let timer_bar = portion_bar(remaining, 3, style::Container::Wrapper, style::Container::ToastTimerLine);
+        let timer = Container::new(timer_bar)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(Alignment::End);
         iced::widget::stack![card, timer].into()
     } else {
         card.into()
@@ -150,11 +145,8 @@ fn chip_container<'a>(class: style::Container, content: Element<'a>) -> Element<
         .into()
 }
 
-fn icon_image(handle: Option<iced::widget::image::Handle>, size: f32) -> Element<'static> {
-    match handle {
-        Some(handle) => iced::widget::image(handle).width(size).height(size).into(),
-        None => Icon::Upload.text_narrow().size(size).into(),
-    }
+fn app_icon(size: f32) -> Element<'static> {
+    Icon::Upload.text_narrow().size(size).class(style::Text::ToastTitle).into()
 }
 
 fn percent_label(percent: u8) -> Element<'static> {
@@ -165,29 +157,87 @@ fn percent_label(percent: u8) -> Element<'static> {
         .into()
 }
 
-fn progress_bar(fraction: f32) -> Element<'static> {
+/// Splits a track into a filled and empty portion by relative flex weight.
+/// `Length::FillPortion` only distributes space among *siblings* in a Row/Column -
+/// alone inside a plain Container it has no effect, so the split must be two Row children.
+fn portion_bar(fraction: f32, height: u32, track_class: style::Container, fill_class: style::Container) -> Element<'static> {
     let fraction = fraction.clamp(0.0, 1.0);
-    Container::new(
-        Container::new(Space::new())
-            .width(Length::FillPortion((fraction * 1000.0).max(1.0) as u16))
-            .height(Length::Fill)
-            .class(style::Container::ToastBarFill),
-    )
-    .width(Length::Fill)
-    .height(4)
-    .class(style::Container::ToastBarTrack)
-    .into()
+    let filled = (fraction * 1000.0).round() as u16;
+    let empty = 1000u16.saturating_sub(filled);
+
+    let mut row = Row::new();
+    if filled > 0 {
+        row = row.push(
+            Container::new(Space::new())
+                .width(Length::FillPortion(filled))
+                .height(Length::Fill)
+                .class(fill_class),
+        );
+    }
+    if empty > 0 {
+        row = row.push(Space::new().width(Length::FillPortion(empty)));
+    }
+
+    Container::new(row)
+        .width(Length::Fill)
+        .height(height)
+        .class(track_class)
+        .into()
+}
+
+fn progress_bar(fraction: f32) -> Element<'static> {
+    portion_bar(fraction, 4, style::Container::ToastBarTrack, style::Container::ToastBarFill)
+}
+
+struct CheckProgram {
+    /// 0..1 pop-in progress.
+    pop: f32,
+}
+
+impl<Message> canvas::Program<Message, style::Theme> for CheckProgram {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &iced::Renderer,
+        _theme: &style::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
+        let radius = (bounds.width.min(bounds.height) / 2.0) * self.pop;
+
+        frame.fill(&Path::circle(center, radius.max(0.0)), GREEN);
+
+        if self.pop > 0.4 {
+            // Checkmark path, scaled/centered to fit the circle (design ref: M4 12l5 5L20 6 in a 24x24 box).
+            let scale = (radius * 2.0) / 24.0;
+            let to_point = |x: f32, y: f32| Point::new(center.x + (x - 12.0) * scale, center.y + (y - 12.0) * scale);
+            let check = Path::new(|builder| {
+                builder.move_to(to_point(4.0, 12.0));
+                builder.line_to(to_point(9.0, 17.0));
+                builder.line_to(to_point(20.0, 6.0));
+            });
+            frame.stroke(
+                &check,
+                Stroke {
+                    style: stroke::Style::Solid(DARK),
+                    width: 3.4 * scale,
+                    line_cap: canvas::LineCap::Round,
+                    line_join: canvas::LineJoin::Round,
+                    ..Stroke::default()
+                },
+            );
+        }
+
+        vec![frame.into_geometry()]
+    }
 }
 
 fn check_circle(pop: f32) -> Element<'static> {
-    let size = 8.0 + pop * 18.0;
-    Container::new(text("v").size(size * 0.55).class(style::Text::ToastCheck))
-        .width(size)
-        .height(size)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .class(style::Container::ToastCheckCircle)
-        .into()
+    Canvas::new(CheckProgram { pop: pop.clamp(0.0, 1.0) }).width(26).height(26).into()
 }
 
 fn error_mark() -> Element<'static> {
@@ -256,10 +306,10 @@ impl<Message> canvas::Program<Message, style::Theme> for SpinnerProgram {
     }
 }
 
-fn spinner(angle: Radians, icon_handle: Option<iced::widget::image::Handle>) -> Element<'static> {
+fn spinner(angle: Radians) -> Element<'static> {
     iced::widget::stack![
         Canvas::new(SpinnerProgram { angle }).width(42).height(42),
-        Container::new(icon_image(icon_handle, 22.0))
+        Container::new(app_icon(22.0))
             .width(42)
             .height(42)
             .align_x(Alignment::Center)
