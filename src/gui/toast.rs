@@ -6,7 +6,6 @@ use iced::{
 };
 
 use crate::gui::{
-    icon::Icon,
     style,
     widget::{Canvas, Column, Container, Element, Row, Space, text},
 };
@@ -145,8 +144,11 @@ fn chip_container<'a>(class: style::Container, content: Element<'a>) -> Element<
         .into()
 }
 
+/// The app icon glyph doesn't render correctly inside the toast window (tried both a raster
+/// image and the app's icon font; both produced garbage). Leaving the chip as a plain colored
+/// shape for now rather than guess a third approach.
 fn app_icon(size: f32) -> Element<'static> {
-    Icon::Upload.text_narrow().size(size).class(style::Text::ToastTitle).into()
+    Space::new().width(size).height(size).into()
 }
 
 fn percent_label(percent: u8) -> Element<'static> {
@@ -307,13 +309,5 @@ impl<Message> canvas::Program<Message, style::Theme> for SpinnerProgram {
 }
 
 fn spinner(angle: Radians) -> Element<'static> {
-    iced::widget::stack![
-        Canvas::new(SpinnerProgram { angle }).width(42).height(42),
-        Container::new(app_icon(22.0))
-            .width(42)
-            .height(42)
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center),
-    ]
-    .into()
+    Canvas::new(SpinnerProgram { angle }).width(42).height(42).into()
 }

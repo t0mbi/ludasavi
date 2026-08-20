@@ -1705,21 +1705,12 @@ impl App {
                     .as_ref()
                     .is_some_and(|t| matches!(t.kind, crate::gui::toast::ToastKind::Progress { .. }))
                 {
-                    let current_game = self
-                        .operation
-                        .active_games()
-                        .and_then(|games| games.keys().next())
-                        .cloned();
                     let (title, found) = match &self.operation {
                         Operation::Backup { .. } => ("Backing up…", self.backup_screen.log.entries.len()),
                         Operation::Restore { .. } => ("Restoring…", self.restore_screen.log.entries.len()),
                         _ => ("Working…", 0),
                     };
-                    let found_label = format!("{found} game{} found", if found == 1 { "" } else { "s" });
-                    let subtitle = match current_game {
-                        Some(game) => format!("{game} · {found_label}"),
-                        None => found_label,
-                    };
+                    let subtitle = format!("{found} game{} found", if found == 1 { "" } else { "s" });
                     return self.update(Message::ShowToast {
                         kind: crate::gui::toast::ToastKind::Progress {
                             title: title.to_string(),
